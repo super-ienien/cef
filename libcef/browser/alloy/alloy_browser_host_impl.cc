@@ -409,6 +409,50 @@ void AlloyBrowserHostImpl::SendExternalBeginFrame() {
   }
 }
 
+void AlloyBrowserHostImpl::SendExternalBeginFrameWithTiming(
+    int64_t frame_time_offset_us,
+    int64_t interval_us,
+    int64_t deadline_offset_us) {
+  if (!IsWindowless()) {
+    DCHECK(false) << "Window rendering is not disabled";
+    return;
+  }
+
+  // The frame time is resolved on the calling thread, before any thread hop,
+  // so that the offset stays relative to the instant of the call.
+  const base::TimeDelta interval =
+      interval_us > 0 ? base::Microseconds(interval_us) : base::TimeDelta();
+  base::TimeDelta offset = base::Microseconds(frame_time_offset_us);
+  if (offset.is_negative()) {
+    offset = base::TimeDelta();
+  } else if (interval.is_positive() && offset > interval) {
+    offset = interval;
+  }
+  const base::TimeTicks frame_time = base::TimeTicks::Now() - offset;
+  const base::TimeTicks deadline =
+      deadline_offset_us > 0
+          ? frame_time + base::Microseconds(deadline_offset_us)
+          : base::TimeTicks();
+  SendExternalBeginFrameOnUIThread(frame_time, deadline, interval);
+}
+
+void AlloyBrowserHostImpl::SendExternalBeginFrameOnUIThread(
+    base::TimeTicks frame_time,
+    base::TimeTicks deadline,
+    base::TimeDelta interval) {
+  if (!CEF_CURRENTLY_ON_UIT()) {
+    CEF_POST_TASK(
+        CEF_UIT,
+        base::BindOnce(&AlloyBrowserHostImpl::SendExternalBeginFrameOnUIThread,
+                       this, frame_time, deadline, interval));
+    return;
+  }
+
+  if (platform_delegate_) {
+    platform_delegate_->SendExternalBeginFrame(frame_time, deadline, interval);
+  }
+}
+
 void AlloyBrowserHostImpl::SendTouchEvent(const CefTouchEvent& event) {
   if (!IsWindowless()) {
     DCHECK(false) << "Window rendering is not disabled";

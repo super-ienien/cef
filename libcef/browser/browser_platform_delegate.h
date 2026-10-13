@@ -11,6 +11,7 @@
 
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ptr.h"
+#include "base/time/time.h"
 #include "cef/include/cef_client.h"
 #include "cef/include/cef_drag_data.h"
 #include "cef/include/internal/cef_types.h"
@@ -314,6 +315,15 @@ class CefBrowserPlatformDelegate {
 
   // Send the external begin frame message. Only used with windowless rendering.
   virtual void SendExternalBeginFrame();
+
+  // Send the external begin frame message with explicit timing: |frame_time|
+  // is the instant the frame belongs to, |deadline| the frame deadline (null
+  // for frame_time + interval) and |interval| the period of the external
+  // clock (zero for the windowless frame rate). Only used with windowless
+  // rendering.
+  virtual void SendExternalBeginFrame(base::TimeTicks frame_time,
+                                      base::TimeTicks deadline,
+                                      base::TimeDelta interval);
 
   // Set the windowless frame rate. Only used with windowless rendering.
   virtual void SetWindowlessFrameRate(int frame_rate);

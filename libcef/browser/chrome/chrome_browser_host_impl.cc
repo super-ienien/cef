@@ -249,6 +249,13 @@ void ChromeBrowserHostImpl::SendExternalBeginFrame() {
   NOTIMPLEMENTED();
 }
 
+void ChromeBrowserHostImpl::SendExternalBeginFrameWithTiming(
+    int64_t frame_time_offset_us,
+    int64_t interval_us,
+    int64_t deadline_offset_us) {
+  NOTIMPLEMENTED();
+}
+
 void ChromeBrowserHostImpl::SendTouchEvent(const CefTouchEvent& event) {
   NOTIMPLEMENTED();
 }

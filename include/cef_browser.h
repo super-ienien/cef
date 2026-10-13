@@ -744,6 +744,29 @@ class CefBrowserHost : public virtual CefBaseRefCounted {
   /*--cef()--*/
   virtual void SendExternalBeginFrame() = 0;
 
+#if CEF_API_ADDED(CEF_EXPERIMENTAL)
+  ///
+  /// Issue a BeginFrame request to Chromium with explicit timing. Only valid
+  /// when CefWindowInfo::external_begin_frame_enabled is set to true.
+  /// |frame_time_offset_us| is the number of microseconds elapsed since the
+  /// instant the frame belongs to, typically the vsync or hardware tick that
+  /// triggered this call; negative values are treated as 0 and values larger
+  /// than the interval are clamped to the interval. |interval_us| is the
+  /// period of the external clock in microseconds; a value <= 0 selects the
+  /// period of CefBrowserSettings.windowless_frame_rate. |deadline_offset_us|
+  /// is the frame deadline in microseconds after the frame time; a value <= 0
+  /// selects the interval, which is what Chromium's own BeginFrame sources
+  /// use. SendExternalBeginFrame() stamps the frame with the time of the call
+  /// and the windowless frame rate. For a smooth result the frame times
+  /// should advance by exactly one interval per tick: date them on a filtered
+  /// grid, not on the wake-up time of the thread that observes the clock.
+  ///
+  /*--cef(added=experimental)--*/
+  virtual void SendExternalBeginFrameWithTiming(int64_t frame_time_offset_us,
+                                                int64_t interval_us,
+                                                int64_t deadline_offset_us) = 0;
+#endif
+
   ///
   /// Send a key event to the browser.
   ///

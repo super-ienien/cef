@@ -13,11 +13,13 @@
 
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/time/time.h"
 #include "build/build_config.h"
 #include "cc/layers/deadline_policy.h"
 #include "cef/include/cef_base.h"
 #include "cef/include/cef_browser.h"
 #include "cef/libcef/browser/alloy/alloy_browser_host_impl.h"
+#include "cef/libcef/browser/osr/external_begin_frame_source_osr.h"
 #include "cef/libcef/browser/osr/host_display_client_osr.h"
 #include "cef/libcef/browser/osr/motion_event_osr.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
@@ -214,8 +216,6 @@ class CefRenderWidgetHostViewOSR
       blink::RecordContentToVisibleTimeRequest visible_time_request) override;
   void CancelSuccessfulPresentationTimeRequestForHostAndDelegate() override;
 
-  void OnFrameComplete(const viz::BeginFrameAck& ack);
-
   // RenderFrameMetadataProvider::Observer implementation.
   void OnRenderFrameMetadataChangedBeforeActivation(
       const cc::RenderFrameMetadata& metadata) override {}
@@ -249,7 +249,15 @@ class CefRenderWidgetHostViewOSR
       const std::optional<viz::LocalSurfaceId>& child_local_surface_id);
   void OnScreenInfoChanged();
   void Invalidate(CefBrowserHost::PaintElementType type);
+  // Legacy form: the frame is stamped with the time of the call and the
+  // interval of the windowless frame rate.
   void SendExternalBeginFrame();
+  // |frame_time| is the instant the frame belongs to, |deadline| the frame
+  // deadline (null for frame_time + interval) and |interval| the period of the
+  // external clock (zero for the windowless frame rate).
+  void SendExternalBeginFrame(base::TimeTicks frame_time,
+                              base::TimeTicks deadline,
+                              base::TimeDelta interval);
   void SendKeyEvent(const input::NativeWebKeyboardEvent& event);
   void SendMouseEvent(const blink::WebMouseEvent& event);
   void SendMouseWheelEvent(const blink::WebMouseWheelEvent& event);
@@ -328,6 +336,9 @@ class CefRenderWidgetHostViewOSR
 
  private:
   void SetFrameRate();
+  void SendExternalBeginFrameInternal(base::TimeTicks frame_time,
+                                      base::TimeTicks deadline,
+                                      base::TimeDelta interval);
   bool SetScreenInfo();
   bool SetViewBounds();
   bool SetRootLayerSize(bool force);
@@ -407,10 +418,11 @@ class CefRenderWidgetHostViewOSR
 
   std::unique_ptr<input::CursorManager> cursor_manager_;
 
-  // Provides |source_id| for BeginFrameArgs that we create.
-  viz::StubBeginFrameSource begin_frame_source_;
-  uint64_t begin_frame_number_ = viz::BeginFrameArgs::kStartingFrameNumber;
-  bool begin_frame_pending_ = false;
+  // Drives the external BeginFrame controller of |compositor_| when
+  // |external_begin_frame_enabled_| is set.
+  std::unique_ptr<CefExternalBeginFrameSourceOSR> external_begin_frame_source_;
+  // The tick interval last applied to the capture period of |video_consumer_|.
+  base::TimeDelta external_capture_interval_;
 
   bool use_shared_texture_ = false;
   bool sync_frame_rate_ = false;
