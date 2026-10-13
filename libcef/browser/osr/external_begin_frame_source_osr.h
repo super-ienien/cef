@@ -12,6 +12,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "cef/include/internal/cef_types.h"
 #include "components/viz/common/frame_sinks/begin_frame_args.h"
 #include "components/viz/common/frame_sinks/begin_frame_source.h"
 #include "mojo/public/cpp/bindings/associated_receiver_set.h"
@@ -45,12 +46,31 @@
 //   missed vsync. viz accepts a single IssueExternalBeginFrame in flight per
 //   controller (mojo bad message otherwise), hence the gate.
 //
+// Every tick is reported exactly once to the delegate, in the order of the
+// Tick() calls, as soon as its outcome is known: DRAWN or NOT_DRAWN from the
+// BeginFrameAck of the Display, DROPPED when the gate discards it. A tick that
+// is still pending when the source is destroyed is not reported.
+//
 // All methods are called on the UI thread.
 class CefExternalBeginFrameSourceOSR
     : public ui::ExternalBeginFrameControllerClientFactory,
       public viz::mojom::ExternalBeginFrameControllerClient {
  public:
-  explicit CefExternalBeginFrameSourceOSR(ui::Compositor* compositor);
+  class Delegate {
+   public:
+    // |compositor_idle| is true if no frame sink was requesting BeginFrames
+    // when the tick was issued (sampled before the issue). Always false for a
+    // DROPPED tick.
+    virtual void OnExternalBeginFrameComplete(
+        cef_external_begin_frame_result_t result,
+        bool compositor_idle) = 0;
+
+   protected:
+    virtual ~Delegate() = default;
+  };
+
+  CefExternalBeginFrameSourceOSR(ui::Compositor* compositor,
+                                 Delegate* delegate);
 
   CefExternalBeginFrameSourceOSR(const CefExternalBeginFrameSourceOSR&) =
       delete;
@@ -99,9 +119,15 @@ class CefExternalBeginFrameSourceOSR
   void Issue(const PendingTick& tick);
   void OnBeginFrameAck(const viz::BeginFrameAck& ack);
 
+  // Report the outcome of the tick in flight, then the ticks dropped behind
+  // it (they came after it, so they are reported after it).
+  void ReportInFlight(cef_external_begin_frame_result_t result);
+  void ReportDropped();
+
   static uint64_t AllocateSourceId();
 
   const raw_ptr<ui::Compositor> compositor_;
+  const raw_ptr<Delegate> delegate_;
   const uint64_t source_id_ = AllocateSourceId();
   viz::BeginFrameSource::BeginFrameArgsGenerator args_generator_;
   mojo::AssociatedReceiverSet<viz::mojom::ExternalBeginFrameControllerClient>
@@ -110,7 +136,11 @@ class CefExternalBeginFrameSourceOSR
   base::TimeDelta interval_;
   base::TimeTicks last_frame_time_;
   bool in_flight_ = false;
+  // Sampled when the tick in flight was issued: no frame sink wanted it.
+  bool in_flight_idle_ = false;
   std::optional<PendingTick> queued_;
+  // Ticks dropped behind the one in flight, reported once it is.
+  uint64_t dropped_pending_ = 0;
   bool needs_begin_frames_ = false;
 
   uint64_t ticks_issued_ = 0;

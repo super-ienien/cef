@@ -2208,6 +2208,27 @@ typedef enum {
   PET_POPUP,
 } cef_paint_element_type_t;
 
+#if CEF_API_ADDED(CEF_EXPERIMENTAL)
+///
+/// Outcome of an external BeginFrame issued with
+/// CefBrowserHost::SendExternalBeginFrame or SendExternalBeginFrameWithTiming.
+///
+typedef enum {
+  /// The compositor drew a frame for this BeginFrame: a paint follows, unless
+  /// the capturer declines it.
+  CEF_EXTERNAL_BEGIN_FRAME_DRAWN = 0,
+
+  /// No surface had damage before the deadline of this BeginFrame: no paint
+  /// will follow.
+  CEF_EXTERNAL_BEGIN_FRAME_NOT_DRAWN,
+
+  /// The BeginFrame was never issued to the compositor: a newer one replaced
+  /// it while another was still in flight, or it was stale when its turn
+  /// came.
+  CEF_EXTERNAL_BEGIN_FRAME_DROPPED,
+} cef_external_begin_frame_result_t;
+#endif
+
 ///
 /// Supported event bit flags.
 ///

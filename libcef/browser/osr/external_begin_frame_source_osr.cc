@@ -16,9 +16,11 @@ uint64_t CefExternalBeginFrameSourceOSR::AllocateSourceId() {
 }
 
 CefExternalBeginFrameSourceOSR::CefExternalBeginFrameSourceOSR(
-    ui::Compositor* compositor)
-    : compositor_(compositor) {
+    ui::Compositor* compositor,
+    Delegate* delegate)
+    : compositor_(compositor), delegate_(delegate) {
   CHECK(compositor_);
+  CHECK(delegate_);
   // Acknowledge a tick as soon as the Display has drawn, not when every frame
   // sink has replied. This is what ui::ExternalBeginFrameAdapter does
   // ("prevents deadlocks when sinks join after frames are displayed"), and it
@@ -63,6 +65,8 @@ void CefExternalBeginFrameSourceOSR::Tick(base::TimeTicks frame_time,
     // Keep this one, with its own time stamps, for the acknowledgement.
     if (queued_) {
       ++ticks_dropped_;
+      // Reported after the tick in flight, which it followed.
+      ++dropped_pending_;
     }
     queued_ = tick;
     ++ticks_queued_;
@@ -79,6 +83,11 @@ void CefExternalBeginFrameSourceOSR::Tick(base::TimeTicks frame_time,
 
 void CefExternalBeginFrameSourceOSR::Issue(const PendingTick& tick) {
   in_flight_ = true;
+  // Before the issue: viz adds the DisplayScheduler as an observer for every
+  // external BeginFrame and removes it at the deadline, so the value seen
+  // between two ticks is the one that tells whether the content itself (its
+  // frame sinks) wanted a frame.
+  in_flight_idle_ = !needs_begin_frames_;
   last_frame_time_ = tick.frame_time;
   ++ticks_issued_;
 
@@ -101,6 +110,8 @@ void CefExternalBeginFrameSourceOSR::OnBeginFrameAck(
     const viz::BeginFrameAck& ack) {
   DCHECK(in_flight_);
   in_flight_ = false;
+  ReportInFlight(ack.has_damage ? CEF_EXTERNAL_BEGIN_FRAME_DRAWN
+                                : CEF_EXTERNAL_BEGIN_FRAME_NOT_DRAWN);
   if (!queued_) {
     return;
   }
@@ -115,6 +126,26 @@ void CefExternalBeginFrameSourceOSR::OnBeginFrameAck(
     Issue(tick);
   } else {
     ++ticks_dropped_;
+    ++dropped_pending_;
+    ReportDropped();
+  }
+}
+
+void CefExternalBeginFrameSourceOSR::ReportInFlight(
+    cef_external_begin_frame_result_t result) {
+  const bool idle = in_flight_idle_;
+  in_flight_idle_ = false;
+  // The delegate may re-enter Tick() from the callback: the state above is
+  // settled before the call, and the dropped ticks are reported right after.
+  delegate_->OnExternalBeginFrameComplete(result, idle);
+  ReportDropped();
+}
+
+void CefExternalBeginFrameSourceOSR::ReportDropped() {
+  while (dropped_pending_ > 0) {
+    --dropped_pending_;
+    delegate_->OnExternalBeginFrameComplete(CEF_EXTERNAL_BEGIN_FRAME_DROPPED,
+                                            false);
   }
 }
 
@@ -122,9 +153,24 @@ mojo::PendingAssociatedRemote<viz::mojom::ExternalBeginFrameControllerClient>
 CefExternalBeginFrameSourceOSR::CreateExternalBeginFrameControllerClient() {
   TRACE_EVENT0("ui", "CefExternalBeginFrameSourceOSR::CreateClient");
   // A new root frame sink (first creation, or re-creation after a GPU process
-  // crash): nothing is in flight anymore, and the sequence restarts.
+  // crash): nothing is in flight anymore, and the sequence restarts. The tick
+  // in flight will never be acknowledged, and the queued one is not issued:
+  // both are reported as dropped, in order, so that every tick gets exactly
+  // one report.
   receivers_.Clear();
-  in_flight_ = false;
+  if (in_flight_) {
+    in_flight_ = false;
+    ++ticks_dropped_;
+    if (queued_) {
+      ++ticks_dropped_;
+      ++dropped_pending_;
+    }
+    queued_.reset();
+    in_flight_idle_ = false;
+    delegate_->OnExternalBeginFrameComplete(CEF_EXTERNAL_BEGIN_FRAME_DROPPED,
+                                            false);
+    ReportDropped();
+  }
   queued_.reset();
   last_frame_time_ = base::TimeTicks();
   args_generator_ = viz::BeginFrameSource::BeginFrameArgsGenerator();

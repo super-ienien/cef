@@ -100,7 +100,8 @@ class CefRenderWidgetHostViewOSR
       public content::RenderFrameMetadataProvider::Observer,
       public ui::CompositorDelegate,
       public content::TextInputManager::Observer,
-      public ui::GestureProviderClient {
+      public ui::GestureProviderClient,
+      public CefExternalBeginFrameSourceOSR::Delegate {
  public:
   CefRenderWidgetHostViewOSR(SkColor background_color,
                              bool use_shared_texture,
@@ -270,6 +271,10 @@ class CefRenderWidgetHostViewOSR
   void OnPaint(const gfx::Rect& damage_rect,
                const gfx::Size& pixel_size,
                const void* pixels);
+  // CefExternalBeginFrameSourceOSR::Delegate methods:
+  void OnExternalBeginFrameComplete(cef_external_begin_frame_result_t result,
+                                    bool compositor_idle) override;
+
   void OnAcceleratedPaint(const gfx::Rect& damage_rect,
                           const gfx::Size& pixel_size,
                           const CefAcceleratedPaintInfo& info);

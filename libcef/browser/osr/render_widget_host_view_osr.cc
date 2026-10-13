@@ -258,7 +258,8 @@ CefRenderWidgetHostViewOSR::CefRenderWidgetHostViewOSR(
     // Before the frame sink of the compositor exists: configures the client
     // factory and wait_for_all_frame_sinks of its root frame sink.
     external_begin_frame_source_ =
-        std::make_unique<CefExternalBeginFrameSourceOSR>(compositor_.get());
+        std::make_unique<CefExternalBeginFrameSourceOSR>(compositor_.get(),
+                                                         this);
   }
   compositor_->SetAcceleratedWidget(gfx::kNullAcceleratedWidget);
 
@@ -1683,6 +1684,28 @@ void CefRenderWidgetHostViewOSR::OnPaint(const gfx::Rect& damage_rect,
       ReleaseResizeHold();
     }
   }
+}
+
+void CefRenderWidgetHostViewOSR::OnExternalBeginFrameComplete(
+    cef_external_begin_frame_result_t result,
+    bool compositor_idle) {
+  TRACE_EVENT1("cef",
+               "CefRenderWidgetHostViewOSR::OnExternalBeginFrameComplete",
+               "result", static_cast<int>(result));
+  // The popup widget has its own compositor and its own acknowledgements;
+  // the client issued one BeginFrame per SendExternalBeginFrame call, and it
+  // gets one report for it, from the view that call was made on.
+  if (IsPopupWidget() || !browser_impl_) {
+    return;
+  }
+#if CEF_API_ADDED(CEF_EXPERIMENTAL)
+  CefRefPtr<CefRenderHandler> handler =
+      browser_impl_->client()->GetRenderHandler();
+  if (handler) {
+    handler->OnExternalBeginFrameComplete(browser_impl_.get(), result,
+                                          compositor_idle);
+  }
+#endif
 }
 
 void CefRenderWidgetHostViewOSR::OnAcceleratedPaint(

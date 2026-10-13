@@ -172,6 +172,28 @@ class CefRenderHandler : public virtual CefBaseRefCounted {
                                   const RectList& dirtyRects,
                                   const CefAcceleratedPaintInfo& info) {}
 
+#if CEF_API_ADDED(CEF_EXPERIMENTAL)
+  ///
+  /// Called once for each call to CefBrowserHost::SendExternalBeginFrame or
+  /// CefBrowserHost::SendExternalBeginFrameWithTiming, in the order of the
+  /// calls, as soon as the outcome of that BeginFrame is known. |result|
+  /// indicates whether the compositor drew a frame, declined because no
+  /// surface had damage before the deadline, or never received the BeginFrame.
+  /// |compositor_idle| is true if no frame sink was requesting BeginFrames when
+  /// this one was issued, meaning the content had declared itself at rest; it
+  /// is sampled before the BeginFrame is issued and is informational. A
+  /// BeginFrame that is still pending when the browser is destroyed gets no
+  /// callback. This method is only called when
+  /// CefWindowInfo::external_begin_frame_enabled is set to true. Called on the
+  /// UI thread, like OnPaint and OnAcceleratedPaint.
+  ///
+  /*--cef(added=experimental)--*/
+  virtual void OnExternalBeginFrameComplete(
+      CefRefPtr<CefBrowser> browser,
+      cef_external_begin_frame_result_t result,
+      bool compositor_idle) {}
+#endif
+
   ///
   /// Called to retrieve the size of the touch handle for the specified
   /// |orientation|.
